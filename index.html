@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kratom Counter Dashboard (Global Cloud)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700;800&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0B0E14;
+            --surface: #141A24;
+            --surface-2: #181F2C;
+            --border: #232B3A;
+            --green: #39FF88;
+            --green-dim: #1f5c3a;
+            --amber: #FFB238;
+            --cyan: #4FD8FF;
+            --cyan-dim: #1d4a5c;
+            --red: #FF5C7A;
+            --text: #E6EBF2;
+            --text-dim: #7C8798;
+        }
+        body { font-family: 'Sarabun', 'Segoe UI', Tahoma, sans-serif; background-color: var(--bg); color: var(--text); margin: 0; padding: 15px; text-align: center; background-image: radial-gradient(circle at 50% 0%, rgba(79,216,255,0.06), transparent 60%); }
+        .container { max-width: 500px; margin: 0 auto; }
+        h1 { color: var(--green); font-size: 20px; margin: 0 0 2px; letter-spacing: 0.5px; }
+        h2 { color: var(--text-dim); font-size: 12px; margin: 0 0 12px; font-weight: normal; letter-spacing: 1px; }
+        .card { background: var(--surface); padding: 15px; border-radius: 14px; box-shadow: 0 4px 14px rgba(0,0,0,0.35); margin-bottom: 12px; border: 1px solid var(--border); }
+        .time-elapsed { font-size: 13px; color: var(--red); font-weight: bold; margin-top: 5px; }
+
+        /* ---- Top chip row: Lap + Battery ---- */
+        .top-row { display: flex; justify-content: center; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap; }
+        .lap-chip { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; color: var(--cyan); border: 1px solid var(--cyan-dim); background: rgba(79,216,255,0.06); border-radius: 20px; padding: 4px 12px; }
+        .batt-badge { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; border-radius: 20px; padding: 4px 12px; display: flex; align-items: center; gap: 4px; }
+        .batt-ok { color: var(--green); border: 1px solid var(--green-dim); background: rgba(57,255,136,0.06); }
+        .batt-low { color: var(--red); border: 1px solid #5c1f2d; background: rgba(255,92,122,0.08); animation: blink 1s infinite; }
+        .batt-usb { color: var(--cyan); border: 1px solid var(--cyan-dim); background: rgba(79,216,255,0.06); }
+        .batt-charging { color: var(--amber); border: 1px solid #5c451f; background: rgba(255,178,56,0.08); }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+        /* ---- Hero: รวมทั้งหมด (signature: LCD glow + scanline) ---- */
+        .hero-card { position: relative; overflow: hidden; }
+        .hero-card::before {
+            content: ""; position: absolute; inset: 0; pointer-events: none;
+            background: repeating-linear-gradient(to bottom, rgba(57,255,136,0.035) 0px, rgba(57,255,136,0.035) 1px, transparent 1px, transparent 3px);
+            opacity: 0.5;
+        }
+        .hero-label { font-size: 12px; color: var(--text-dim); letter-spacing: 2px; position: relative; }
+        .hero-header-row { display: flex; justify-content: space-between; align-items: baseline; position: relative; }
+        .hero-date { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--cyan); position: relative; }
+        .global-round { font-family: 'JetBrains Mono', monospace; font-size: 54px; font-weight: 800; color: var(--amber); margin: 4px 0; line-height: 1; text-shadow: 0 0 18px rgba(255,178,56,0.35); position: relative; }
+        .hero-sub { font-size: 13px; color: var(--text-dim); position: relative; }
+        .hero-sub b { color: var(--green); font-family: 'JetBrains Mono', monospace; }
+
+        /* ---- Player grid: กระชับ ให้ 14 คน อยู่ในหน้าจอเดียว ---- */
+        .player-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; text-align: left; }
+        .player-cell { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; display: flex; justify-content: space-between; align-items: center; }
+        .player-cell.is-active { border-color: var(--green-dim); background: rgba(57, 255, 136, 0.06); }
+        .player-name-wrap { display: flex; align-items: center; gap: 6px; min-width: 0; }
+        .player-name { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+        .status-dot.on { background: var(--green); box-shadow: 0 0 6px rgba(57,255,136,0.8); }
+        .status-dot.off { background: #3a4150; }
+        .player-round { font-family: 'JetBrains Mono', monospace; font-size: 18px; font-weight: 700; color: var(--text-dim); flex-shrink: 0; padding-left: 6px; }
+        .player-round.pos { color: var(--green); text-shadow: 0 0 6px rgba(57,255,136,0.35); }
+
+        /* ---- Lap search combobox ---- */
+        .lap-search-wrap { position: relative; text-align: left; }
+        .lap-search-input { width: 100%; box-sizing: border-box; background: var(--surface-2); border: 1px solid var(--border); color: var(--text); padding: 10px 12px; border-radius: 8px; font-size: 14px; font-family: 'Sarabun', sans-serif; }
+        .lap-search-input:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 0 2px rgba(79,216,255,0.15); }
+        .lap-dropdown { position: absolute; top: 105%; left: 0; right: 0; background: #10151F; border: 1px solid var(--border); border-radius: 8px; max-height: 220px; overflow-y: auto; z-index: 10; box-shadow: 0 6px 20px rgba(0,0,0,0.5); }
+        .lap-option { padding: 10px 12px; text-align: left; font-size: 13px; cursor: pointer; border-bottom: 1px solid var(--border); }
+        .lap-option:last-child { border-bottom: none; }
+        .lap-option:hover, .lap-option.pinned { background: rgba(79,216,255,0.06); }
+        .lap-option.selected { background: rgba(79,216,255,0.14); }
+        .lap-option .lap-tag { font-family: 'JetBrains Mono', monospace; color: var(--cyan); font-weight: 700; margin-right: 8px; }
+        .lap-option .lap-time { color: var(--text-dim); font-size: 11px; }
+        .lap-option .pin-label { float: right; font-size: 10px; color: var(--green); }
+
+        /* ---- History feed ---- */
+        .lap-snapshot-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+        .lap-snapshot-header .lap-title { font-family: 'JetBrains Mono', monospace; color: var(--amber); font-size: 16px; font-weight: 700; }
+        .lap-snapshot-header .lap-datetime { color: var(--text-dim); font-size: 12px; }
+        .history-feed { text-align: left; max-height: 340px; overflow-y: auto; }
+        .history-item { display: flex; justify-content: space-between; padding: 8px 4px; border-bottom: 1px solid var(--border); font-size: 13px; }
+        .history-item:last-child { border-bottom: none; }
+        .history-item .h-desc { color: var(--text); }
+        .history-item .h-time { font-family: 'JetBrains Mono', monospace; color: var(--text-dim); font-size: 11px; white-space: nowrap; margin-left: 10px; }
+        .history-item .h-plus { color: var(--green); }
+        .history-item .h-minus { color: var(--red); }
+        .history-item .h-toggle { color: var(--amber); }
+        .history-item .h-system { color: var(--text-dim); font-style: italic; }
+        .history-empty { color: var(--text-dim); font-size: 13px; padding: 20px 0; text-align: center; }
+
+        /* ---- Notes card ---- */
+        .note-label { font-size: 13px; color: var(--text-dim); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: baseline; }
+        .note-textarea { width: 100%; box-sizing: border-box; background: var(--surface-2); border: 1px solid var(--border); color: var(--text); padding: 10px 12px; border-radius: 8px; font-size: 14px; font-family: 'Sarabun', sans-serif; resize: vertical; min-height: 70px; }
+        .note-textarea:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 0 2px rgba(79,216,255,0.15); }
+        .note-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+        .note-updated { font-size: 11px; color: var(--text-dim); }
+        .note-save-btn { font-family: 'Sarabun', sans-serif; font-weight: 600; font-size: 13px; color: #06140c; background: var(--green); border: none; border-radius: 8px; padding: 7px 16px; cursor: pointer; }
+        .note-save-btn:disabled { opacity: 0.4; cursor: default; }
+        .note-save-btn:not(:disabled):hover { filter: brightness(1.1); }
+    </style>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+
+    <script>
+        // กำหนดที่อยู่ Realtime Database ของคุณ
+        const firebaseConfig = {
+            databaseURL: "https://counter-v5-0-1-6b77d-default-rtdb.asia-southeast1.firebasedatabase.app/"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+
+        // จำนวนวันย้อนหลังที่จะดึง history event มาแสดง (ยังไม่ได้ fix ตัวเลขสุดท้าย - ลองใช้ 7 วันไปก่อน ปรับได้ตรงนี้จุดเดียว)
+        const HISTORY_DAYS = 7;
+
+        // ต้องตรงกับ NO_BATTERY_THRESHOLD ใน firmware (.ino) - ต่ำกว่านี้ถือว่าไม่มีแบตต่อ/จ่ายไฟจาก USB ตรง
+        const NO_BATTERY_THRESHOLD = 1.0;
+
+        // โครงสร้างตัวแปรของอาเรย์ชื่อภาษาไทยเพื่อใช้แทนค่าในการแสดงผล
+        const playerThaiNames = [
+          "แทน", "โอ๊ตวายริ่ง", "เสี่ยมาร์ค", "ภู",
+          "แม็ค", "พลอย", "เพชร", "ไปรท์",
+          "โอ๊คติ๋ม", "ชานนท์", "ไอซ์", "บิว", "บอสหลอน", "ผู้ใช้ 1"
+        ];
+
+        function formatLapDateTime(ms) {
+            if (!ms) return "";
+            const d = new Date(ms);
+            const hh = String(d.getHours()).padStart(2, "0");
+            const mm = String(d.getMinutes()).padStart(2, "0");
+            const dd = String(d.getDate()).padStart(2, "0");
+            const mo = String(d.getMonth() + 1).padStart(2, "0");
+            const yyyy = d.getFullYear();
+            return `${hh}:${mm} (${dd}/${mo}/${yyyy})`;
+        }
+
+        function formatClockTime(ms) {
+            if (!ms) return "";
+            const d = new Date(ms);
+            const hh = String(d.getHours()).padStart(2, "0");
+            const mm = String(d.getMinutes()).padStart(2, "0");
+            const ss = String(d.getSeconds()).padStart(2, "0");
+            return `${hh}:${mm}:${ss}`;
+        }
+
+        function eventDescription(ev) {
+            const name = (ev.playerIndex !== undefined && ev.playerIndex !== null && ev.playerIndex >= 0)
+                ? (playerThaiNames[ev.playerIndex] || `Player ${ev.playerIndex}`)
+                : null;
+            switch (ev.type) {
+                case "global_plus": return { text: `รวมทั้งหมด +1 รอบ (รวม ${ev.valueAfter})`, cls: "h-plus" };
+                case "global_minus": return { text: `รวมทั้งหมด -1 รอบ (รวม ${ev.valueAfter})`, cls: "h-minus" };
+                case "player_plus": return { text: `${name} +1 รอบ (รวม ${ev.valueAfter})`, cls: "h-plus" };
+                case "player_minus": return { text: `${name} -1 รอบ (รวม ${ev.valueAfter})`, cls: "h-minus" };
+                case "toggle": return { text: `${name} เปลี่ยนสถานะเป็น ${ev.valueAfter ? "ON" : "OFF"}`, cls: "h-toggle" };
+                case "new_lap": return { text: `สร้าง Lap ${ev.valueAfter} ใหม่ (รีเซ็ตรอบ + ปิด ON/OFF ทุกคน)`, cls: "h-system" };
+                case "lap_edited": return { text: `แก้เลข Lap เป็น ${ev.valueAfter}`, cls: "h-system" };
+                case "round_reset": return { text: `รีเซ็ตจำนวนรอบ (คงสถานะ ON/OFF)`, cls: "h-system" };
+                case "system_reset": return { text: `รีเซ็ตระบบทั้งหมด`, cls: "h-system" };
+                case "lap_deleted": return { text: `ลบ Lap ${ev.valueAfter} ออกจากประวัติ`, cls: "h-system" };
+                case "lap_data_edited": return { text: `แก้ไขข้อมูล Lap ${ev.valueAfter} จากเครื่อง`, cls: "h-system" };
+                default: return { text: ev.type, cls: "h-system" };
+            }
+        }
+
+        function dashboard() {
+            return {
+                // ---- live snapshot จาก /kratom_counter ----
+                globalRound: 0,
+                activeCount: 0,
+                timeSincePress: 0,
+                currentLapNumber: 0,
+                currentLapKey: "",
+                hasActiveLap: false,
+                batteryPercent: null,
+                batteryVoltage: null,
+                isCharging: false,
+                players: [],
+
+                // ---- laps จาก /kratom_laps ----
+                laps: [], // { id, lapNumber, time, globalRoundAtLap, players }
+
+                // ---- events จาก /kratom_events (รวมหลายวัน) ----
+                events: [], // { id, date, time, lapNumber, lapKey, type, playerIndex, valueAfter }
+
+                // ---- UI state ----
+                lapSearch: "",
+                lapDropdownOpen: false,
+                selectedLapId: null, // null = ใช้ lap ปัจจุบันโดย default
+
+                // ---- หมายเหตุ (แยกตาม lap, sync realtime ผ่าน /kratom_notes/{lapKey}) ----
+                notesByLapKeyRaw: {},  // ข้อมูลดิบทั้งหมดจาก /kratom_notes เก็บไว้ในเครื่อง sync กับ lap ที่เลือกดู
+                activeNoteLapKey: null, // lapKey ของ note ที่กำลังแสดง/แก้อยู่ตอนนี้
+                noteText: "",
+                noteUpdatedAt: null,
+                noteDirty: false,   // true = ผู้ใช้กำลังพิมพ์อยู่ ห้ามให้ค่าจาก Firebase มาทับ
+                noteSaving: false,
+
+                init() {
+                    this.listenCounter();
+                    this.listenLaps();
+                    this.listenEvents();
+                    this.listenNotes();
+                    // สลับหมายเหตุอัตโนมัติทุกครั้งที่ lap ที่กำลังดูอยู่เปลี่ยน (เลือกจาก dropdown หรือ lap ปัจจุบันเปลี่ยน)
+                    this.$watch("displayedLap", (lap) => this.syncNoteForLap(lap));
+                    this.syncNoteForLap(this.displayedLap);
+                },
+
+                listenCounter() {
+                    database.ref("/kratom_counter").on("value", (snapshot) => {
+                        const data = snapshot.val();
+                        if (!data) return;
+                        this.globalRound = data.globalRound ?? 0;
+                        this.activeCount = data.activeCount ?? 0;
+                        this.timeSincePress = data.timeSinceLastPress ?? 0;
+                        this.currentLapNumber = data.currentLapNumber ?? 0;
+                        this.currentLapKey = data.currentLapKey ?? "";
+                        this.hasActiveLap = !!data.hasActiveLap;
+                        this.batteryPercent = data.batteryPercent ?? null;
+                        this.batteryVoltage = data.batteryVoltage ?? null;
+                        this.isCharging = !!data.isCharging;
+                        this.players = Array.isArray(data.players) ? data.players : [];
+                    }, (error) => console.error("Firebase counter error:", error));
+                },
+
+                listenLaps() {
+                    database.ref("/kratom_laps").on("value", (snapshot) => {
+                        const data = snapshot.val() || {};
+                        this.laps = Object.keys(data).map((key) => ({ id: key, ...data[key] }));
+                    }, (error) => console.error("Firebase laps error:", error));
+                },
+
+                listenEvents() {
+                    // ผูก listener แยกตามวัน (path แบ่งตามวันที่อยู่แล้ว) ย้อนหลัง HISTORY_DAYS วัน
+                    const perDateBuffers = {};
+                    for (let i = 0; i < HISTORY_DAYS; i++) {
+                        const d = new Date();
+                        d.setDate(d.getDate() - i);
+                        const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+                        perDateBuffers[dateKey] = [];
+                        database.ref(`/kratom_events/${dateKey}`).on("value", (snapshot) => {
+                            const data = snapshot.val() || {};
+                            perDateBuffers[dateKey] = Object.keys(data).map((key) => ({ id: key, date: dateKey, ...data[key] }));
+                            // รวมทุกวันเข้าด้วยกันใหม่ทุกครั้งที่มีการเปลี่ยนแปลง
+                            this.events = Object.values(perDateBuffers).flat().sort((a, b) => (b.time || 0) - (a.time || 0));
+                        }, (error) => console.error(`Firebase events error (${dateKey}):`, error));
+                    }
+                },
+
+                listenNotes() {
+                    // ดึงทั้งก้อนมาเก็บไว้ในเครื่อง (ทุก lap) แล้วค่อยเลือกอันที่ตรงกับ lap ที่กำลังดูอยู่มาโชว์
+                    database.ref("/kratom_notes").on("value", (snapshot) => {
+                        this.notesByLapKeyRaw = snapshot.val() || {};
+                        // ถ้ากำลังพิมพ์ค้างอยู่ (noteDirty) ไม่เอาค่าจาก Firebase มาทับตอนนี้ กันข้อความหาย
+                        if (!this.noteDirty) {
+                            this.syncNoteForLap(this.displayedLap);
+                        }
+                    }, (error) => console.error("Firebase notes error:", error));
+                },
+
+                syncNoteForLap(lap) {
+                    const key = lap ? lap.id : null;
+                    this.activeNoteLapKey = key;
+                    const entry = key && this.notesByLapKeyRaw[key] ? this.notesByLapKeyRaw[key] : null;
+                    this.noteText = entry ? (entry.text || "") : "";
+                    this.noteUpdatedAt = entry ? (entry.updatedAt || null) : null;
+                    this.noteDirty = false;
+                },
+
+                saveNote() {
+                    if (!this.activeNoteLapKey) return;
+                    this.noteSaving = true;
+                    const payload = { text: this.noteText, updatedAt: Date.now() };
+                    database.ref("/kratom_notes/" + this.activeNoteLapKey).set(payload)
+                        .then(() => {
+                            this.noteDirty = false;
+                            this.noteSaving = false;
+                        })
+                        .catch((error) => {
+                            console.error("บันทึกหมายเหตุไม่สำเร็จ:", error);
+                            this.noteSaving = false;
+                        });
+                },
+
+                displayName(index, fallback) {
+                    return playerThaiNames[index] || fallback;
+                },
+
+                battClass() {
+                    if (this.batteryPercent === null || this.batteryVoltage === null) return "";
+                    if (this.batteryVoltage < NO_BATTERY_THRESHOLD) return "batt-badge batt-usb";
+                    if (this.isCharging) return "batt-badge batt-charging";
+                    return this.batteryPercent < 20 ? "batt-badge batt-low" : "batt-badge batt-ok";
+                },
+
+                // ---- Lap selector ----
+                get sortedLaps() {
+                    return [...this.laps].sort((a, b) => (b.time || 0) - (a.time || 0));
+                },
+
+                get currentLapRecord() {
+                    // จับคู่ด้วย key ก่อน (แม่นยำสุด) ถ้าไม่เจอ fallback เป็น lap ล่าสุดตามเวลา
+                    return this.laps.find((l) => l.id === this.currentLapKey) || this.sortedLaps[0] || null;
+                },
+
+                get filteredLapOptions() {
+                    const cur = this.currentLapRecord;
+                    const search = this.lapSearch.trim().toLowerCase();
+                    let rest = this.sortedLaps.filter((l) => (!cur || l.id !== cur.id));
+                    if (search) {
+                        rest = rest.filter((l) => {
+                            const numText = String(l.lapNumber).toLowerCase();
+                            const dateText = formatLapDateTime(l.time).toLowerCase(); // เช่น "18:59 (14/07/2026)"
+                            return numText.includes(search) || dateText.includes(search);
+                        });
+                    }
+                    return cur ? [cur, ...rest] : rest;
+                },
+
+                selectLap(lapId) {
+                    this.selectedLapId = lapId;
+                    this.lapDropdownOpen = false;
+                    this.lapSearch = "";
+                },
+
+                get displayedLap() {
+                    if (this.selectedLapId) {
+                        return this.laps.find((l) => l.id === this.selectedLapId) || this.currentLapRecord;
+                    }
+                    return this.currentLapRecord;
+                },
+
+                // NEW: lap ที่กำลังดูอยู่ คือ lap ปัจจุบันที่ยัง live อยู่หรือเปล่า
+                get displayedIsLive() {
+                    return !!(this.displayedLap && this.currentLapRecord && this.displayedLap.id === this.currentLapRecord.id);
+                },
+
+                // NEW: ถ้าเป็น lap ปัจจุบัน ใช้ค่าสดจาก /kratom_counter, ถ้าเป็น lap เก่า ใช้ snapshot ที่ปิดไว้แล้วใน record นั้น
+                get displayedGlobalRound() {
+                    if (this.displayedIsLive) return this.globalRound;
+                    return this.displayedLap ? (this.displayedLap.globalRoundAtLap ?? 0) : 0;
+                },
+
+                get displayedPlayers() {
+                    if (this.displayedIsLive) return this.players;
+                    return this.displayedLap && Array.isArray(this.displayedLap.players) ? this.displayedLap.players : [];
+                },
+
+                get displayedActiveCount() {
+                    return this.displayedPlayers.filter((p) => p.active).length;
+                },
+
+                get displayedLapEvents() {
+                    const lap = this.displayedLap;
+                    if (!lap) return [];
+                    return this.events.filter((e) => e.lapKey === lap.id);
+                },
+
+                formatLapLabel(lap) {
+                    if (!lap) return "";
+                    return `lap${lap.lapNumber} ${formatLapDateTime(lap.time)}`;
+                },
+
+                formatEventTime(ms) { return formatClockTime(ms); },
+                eventDescription(ev) { return eventDescription(ev); },
+            };
+        }
+    </script>
+</head>
+<body x-data="dashboard()" x-init="init()">
+    <div class="container">
+        <h1>🌿 Kratom Counter (Cloud Live) 🌿</h1>
+        <h2>YENCHAM GANG OFFICIAL &middot; v5.0.9</h2>
+
+        <!-- ---- Lap selector ย้ายขึ้นมาบนสุด: เลือก lap ไหน ค่าด้านล่างเปลี่ยนตามทันที ---- -->
+        <div class="card" style="text-align: left;">
+            <div style="font-size: 13px; color: #aaa; margin-bottom: 8px;">ค้นหา / เลือก Lap</div>
+            <div class="lap-search-wrap" @click.outside="lapDropdownOpen = false">
+                <input
+                    type="text"
+                    class="lap-search-input"
+                    placeholder="พิมพ์เลข lap หรือวันที่/เวลา เช่น 14/07..."
+                    x-model="lapSearch"
+                    @focus="lapDropdownOpen = true"
+                />
+                <div class="lap-dropdown" x-show="lapDropdownOpen" x-cloak>
+                    <template x-if="filteredLapOptions.length === 0">
+                        <div class="history-empty">ไม่พบ Lap ที่ค้นหา</div>
+                    </template>
+                    <template x-for="lap in filteredLapOptions" :key="lap.id">
+                        <div
+                            class="lap-option"
+                            :class="{ pinned: lap.id === (currentLapRecord && currentLapRecord.id), selected: displayedLap && lap.id === displayedLap.id }"
+                            @click="selectLap(lap.id)"
+                        >
+                            <span class="lap-tag" x-text="'lap' + lap.lapNumber"></span>
+                            <span class="lap-time" x-text="formatLapDateTime(lap.time)"></span>
+                            <span class="pin-label" x-show="currentLapRecord && lap.id === currentLapRecord.id">ล่าสุด</span>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+
+        <!-- ---- ส่วนที่ตั้งใจให้แคปหน้าจอเดียวเห็นครบ: Lap ที่เลือก + รวมทั้งหมด + รอบทุกคน ---- -->
+        <div class="top-row">
+            <span class="lap-chip" x-text="displayedLap ? ('Lap ' + displayedLap.lapNumber) : 'Lap -'"></span>
+            <span class="lap-chip" x-show="displayedIsLive" style="color:#00ff66; border-color:#1f5c3a;">● กำลังนับสด</span>
+            <span :class="battClass()" x-show="batteryPercent !== null">
+                <template x-if="batteryVoltage !== null && batteryVoltage < NO_BATTERY_THRESHOLD">
+                    <span>⚡ USB Power</span>
+                </template>
+                <template x-if="!(batteryVoltage !== null && batteryVoltage < NO_BATTERY_THRESHOLD)">
+                    <span>
+                        <span x-text="(isCharging ? '⚡ ' : '🔋 ') + batteryPercent + '%'"></span>
+                        <span x-show="batteryVoltage !== null" x-text="' (' + Number(batteryVoltage).toFixed(2) + 'V)'"></span>
+                    </span>
+                </template>
+            </span>
+        </div>
+
+        <div class="card hero-card">
+            <div class="hero-header-row">
+                <span class="hero-label">รวมทั้งหมด</span>
+                <span class="hero-date" x-text="displayedLap ? formatLapDateTime(displayedLap.time) : ''"></span>
+            </div>
+            <div class="global-round" x-text="displayedGlobalRound"></div>
+            <div class="hero-sub" x-show="displayedIsLive">กำลังวนอยู่ <b x-text="displayedActiveCount"></b> คน &middot; ล่าสุด <span x-text="timeSincePress"></span> วิ</div>
+            <div class="hero-sub" x-show="!displayedIsLive">ปิด lap แล้ว</div>
+        </div>
+
+        <div class="card">
+            <div class="player-grid">
+                <template x-for="(p, index) in displayedPlayers" :key="index">
+                    <div class="player-cell" :class="p.active ? 'is-active' : ''">
+                        <div class="player-name-wrap">
+                            <span class="status-dot" :class="p.active ? 'on' : 'off'"></span>
+                            <span class="player-name" x-text="displayName(index, p.name)"></span>
+                        </div>
+                        <span class="player-round" :class="p.round > 0 ? 'pos' : ''" x-text="p.round"></span>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- ---- NEW: หมายเหตุ แยกตาม lap เขียนได้จากเว็บ realtime ---- -->
+        <div class="card" style="text-align: left;">
+            <div class="note-label">
+                <span x-text="displayedLap ? ('หมายเหตุ — lap' + displayedLap.lapNumber) : 'หมายเหตุ'"></span>
+                <span x-show="noteDirty" style="color: var(--cyan);">มีการแก้ไขที่ยังไม่บันทึก</span>
+            </div>
+            <textarea
+                class="note-textarea"
+                placeholder="เขียนหมายเหตุถึงกลุ่มสำหรับ lap นี้..."
+                x-model="noteText"
+                :disabled="!activeNoteLapKey"
+                @input="noteDirty = true"
+            ></textarea>
+            <div class="note-footer">
+                <span class="note-updated" x-text="noteUpdatedAt ? ('บันทึกล่าสุด ' + formatLapDateTime(noteUpdatedAt)) : 'ยังไม่มีการบันทึก'"></span>
+                <button class="note-save-btn" @click="saveNote()" :disabled="!activeNoteLapKey || !noteDirty || noteSaving" x-text="noteSaving ? 'กำลังบันทึก...' : 'บันทึก'"></button>
+            </div>
+        </div>
+
+
+        <!-- ---- NEW: Lap snapshot + History feed แบบเรียลไทม์ ---- -->
+        <div class="card" style="text-align: left;">
+            <template x-if="displayedLap">
+                <div class="lap-snapshot-header">
+                    <span class="lap-title" x-text="'lap' + displayedLap.lapNumber"></span>
+                    <span class="lap-datetime" x-text="formatLapDateTime(displayedLap.time)"></span>
+                </div>
+            </template>
+            <template x-if="!displayedLap">
+                <div class="history-empty">ยังไม่มี Lap ที่สร้างไว้</div>
+            </template>
+
+            <div class="history-feed">
+                <template x-if="displayedLap && displayedLapEvents.length === 0">
+                    <div class="history-empty">ยังไม่มีความเคลื่อนไหวใน Lap นี้</div>
+                </template>
+                <template x-for="ev in displayedLapEvents" :key="ev.id">
+                    <div class="history-item">
+                        <span class="h-desc" :class="eventDescription(ev).cls" x-text="eventDescription(ev).text"></span>
+                        <span class="h-time" x-text="formatEventTime(ev.time)"></span>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
